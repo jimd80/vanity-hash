@@ -59,6 +59,7 @@ options:
   -o --nonce-offset  Nonce placement: 'append' (default), 'last' (overwrites the end of the file
                      growing backwards), or a byte offset number to overwrite a section in the file
   -n --nonce-size    Fixed size of the nonce in bytes. Default is a dynamic size.
+  -m --magic         Magic string in the file to replace with nonce (can only occur once in the file)
 ```
 
 ## Examples

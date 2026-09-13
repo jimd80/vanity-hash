@@ -14,7 +14,7 @@ static inline void sha256_transform_blocks(int cpuMode, uint32_t digest[8], cons
     }
 }
 
-// Compute full SHA256 of buffer in memory (used for verification)
+// Compute full SHA256 of buffer with constant memory
 void sha256_compute(const uint8_t *data, size_t len, uint32_t digest[8], int cpuMode) {
     digest[0] = 0x6a09e667;
     digest[1] = 0xbb67ae85;
@@ -25,24 +25,29 @@ void sha256_compute(const uint8_t *data, size_t len, uint32_t digest[8], int cpu
     digest[6] = 0x1f83d9ab;
     digest[7] = 0x5be0cd19;
 
+    size_t full_blocks = len / 64;
+    if (full_blocks > 0 && data) {
+        sha256_transform_blocks(cpuMode, digest, data, full_blocks);
+    }
+
+    size_t tail_len = len % 64;
+    uint8_t tail_buf[128] __attribute__((aligned(64)));
+    memset(tail_buf, 0, sizeof(tail_buf));
+
+    if (tail_len > 0 && data) {
+        memcpy(tail_buf, data + full_blocks * 64, tail_len);
+    }
+    tail_buf[tail_len] = 0x80;
+
     size_t rem = (len + 1) % 64;
     size_t pad_zeros = (rem <= 56) ? (56 - rem) : (56 + 64 - rem);
-    size_t padded_len = len + 1 + pad_zeros + 8;
-    size_t num_blocks = padded_len / 64;
-
-    uint8_t *padded = (uint8_t*)calloc(num_blocks, 64);
-    if (!padded) return;
-
-    if (len > 0 && data) {
-        memcpy(padded, data, len);
-    }
-    padded[len] = 0x80;
+    size_t tail_total = (len + 1 + pad_zeros + 8) - (full_blocks * 64);
+    size_t tail_blocks = tail_total / 64;
 
     uint64_t bit_len = (uint64_t)len * 8ULL;
     for (int i = 0; i < 8; i++) {
-        padded[padded_len - 8 + i] = (uint8_t)(bit_len >> ((7 - i) * 8));
+        tail_buf[tail_total - 8 + i] = (uint8_t)(bit_len >> ((7 - i) * 8));
     }
 
-    sha256_transform_blocks(cpuMode, digest, padded, num_blocks);
-    free(padded);
+    sha256_transform_blocks(cpuMode, digest, tail_buf, tail_blocks);
 }

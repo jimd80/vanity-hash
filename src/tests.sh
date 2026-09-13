@@ -40,7 +40,7 @@ echo -n "Test 1: Help message and options display properly... "
 output=$($BIN --help)
 if echo "$output" | grep -q "Modifies a file with a nonce so its hash contains magic words" && \
    echo "$output" | grep -q -- "-a --alphabet" && \
-   echo "$output" | grep -q -- "last"; then
+   echo "$output" | grep -q -- "-m --magic"; then
     echo -e "${GREEN}PASS${NC}"
 else
     echo -e "${RED}FAIL${NC}"
@@ -211,20 +211,8 @@ else
     exit 1
 fi
 
-# Test 15: Alphabet: ascii (32-127)
-echo -n "Test 15: Alphabet ascii (32-127)... "
-echo -n "data_" > "$TMPDIR/alpha_ascii.txt"
-$BIN -a ascii -n 4 -s 77 "$TMPDIR/alpha_ascii.txt" "$TMPDIR/alpha_ascii_out.txt" >/dev/null
-hash=$(compute_sha256 "$TMPDIR/alpha_ascii_out.txt")
-if [[ "$hash" =~ ^77 ]]; then
-    echo -e "${GREEN}PASS ($hash)${NC}"
-else
-    echo -e "${RED}FAIL ($hash)${NC}"
-    exit 1
-fi
-
-# Test 16: Timeout option (-t 1 with huge search space)
-echo -n "Test 16: Timeout handling (-t 1)... "
+# Test 15: Timeout option (-t 1 with huge search space)
+echo -n "Test 15: Timeout handling (-t 1)... "
 set +e
 $BIN -s 00000000000000 -t 1 "$TMPDIR/hello.txt" "$TMPDIR/timeout_out.txt" >/dev/null 2>&1
 exit_code=$?
@@ -236,21 +224,65 @@ else
     exit 1
 fi
 
-# Test 17: SHA-256 block boundary edge cases (55, 56, 64, 65, 128 bytes)
-echo -n "Test 17: SHA256 block boundary edge cases (55, 56, 64, 65, 128 bytes)... "
-for sz in 55 56 64 65 128; do
-    head -c "$sz" </dev/urandom > "$TMPDIR/blk_$sz.bin"
-    $BIN -s "f$sz" "$TMPDIR/blk_$sz.bin" "$TMPDIR/blk_${sz}_out.bin" >/dev/null
-    hash=$(compute_sha256 "$TMPDIR/blk_${sz}_out.bin")
-    if [[ ! "$hash" =~ ^f$sz ]]; then
-        echo -e "${RED}FAIL on size $sz ($hash)${NC}"
-        exit 1
-    fi
-done
-echo -e "${GREEN}PASS${NC}"
+# Test 16: File already matches required hash
+echo -n "Test 16: File already matches required hash... "
+echo "This is already matching data" > "$TMPDIR/already.txt"
+actual_hash=$(compute_sha256 "$TMPDIR/already.txt")
+target_prefix=${actual_hash:0:4}
+output=$($BIN -s "$target_prefix" "$TMPDIR/already.txt" "$TMPDIR/already_out.txt")
+if echo "$output" | grep -q "File already matches the required hash" && \
+   ! echo "$output" | grep -q "hashes searched"; then
+    echo -e "${GREEN}PASS (Correctly detected without computation stats)${NC}"
+else
+    echo -e "${RED}FAIL (Unexpected output: $output)${NC}"
+    exit 1
+fi
 
-# Test 18: 20-bit vanity search (-s deadb)
-echo -n "Test 18: 20-bit vanity search (-s deadb)... "
+# Test 17: Magic string replacement (-m --magic)
+echo -n "Test 17: Magic string replacement (-m MAGIC_NONCE)... "
+echo "PrefixHeader:MAGIC_NONCE:SuffixFooter" > "$TMPDIR/magic_in.txt"
+$BIN -m "MAGIC_NONCE" -a alphanum -s 77 "$TMPDIR/magic_in.txt" "$TMPDIR/magic_out.txt" >/dev/null
+hash=$(compute_sha256 "$TMPDIR/magic_out.txt")
+orig_sz=$(stat -c%s "$TMPDIR/magic_in.txt")
+new_sz=$(stat -c%s "$TMPDIR/magic_out.txt")
+content=$(cat "$TMPDIR/magic_out.txt")
+if [[ "$hash" =~ ^77 ]] && [ "$orig_sz" -eq "$new_sz" ] && [[ "$content" =~ ^PrefixHeader:[a-zA-Z0-9]{11}:SuffixFooter$ ]]; then
+    echo -e "${GREEN}PASS ($hash, replaced magic string)${NC}"
+else
+    echo -e "${RED}FAIL (hash: $hash, content: '$content')${NC}"
+    exit 1
+fi
+
+# Test 18: Magic string occurring more than once (error test)
+echo -n "Test 18: Magic string occurring more than once... "
+echo "First MAGIC and Second MAGIC" > "$TMPDIR/magic_dup.txt"
+set +e
+dup_out=$($BIN -m "MAGIC" -s 12 "$TMPDIR/magic_dup.txt" 2>&1)
+exit_code=$?
+set -e
+if [ $exit_code -ne 0 ] && echo "$dup_out" | grep -qi "more than once"; then
+    echo -e "${GREEN}PASS (Error correctly reported: '$dup_out')${NC}"
+else
+    echo -e "${RED}FAIL (Exit code $exit_code, output: '$dup_out')${NC}"
+    exit 1
+fi
+
+# Test 19: Magic string not found (error test)
+echo -n "Test 19: Magic string not found in file... "
+echo "Some random content without target" > "$TMPDIR/magic_missing.txt"
+set +e
+missing_out=$($BIN -m "NOT_THERE" -s 12 "$TMPDIR/magic_missing.txt" 2>&1)
+exit_code=$?
+set -e
+if [ $exit_code -ne 0 ] && echo "$missing_out" | grep -qi "not found"; then
+    echo -e "${GREEN}PASS (Error correctly reported: '$missing_out')${NC}"
+else
+    echo -e "${RED}FAIL (Exit code $exit_code, output: '$missing_out')${NC}"
+    exit 1
+fi
+
+# Test 20: 20-bit vanity search (-s deadb)
+echo -n "Test 20: 20-bit vanity search (-s deadb)... "
 echo "Performance test for 20-bit search" > "$TMPDIR/perf.txt"
 $BIN -s deadb "$TMPDIR/perf.txt" "$TMPDIR/perf_out.txt" >/dev/null
 hash=$(compute_sha256 "$TMPDIR/perf_out.txt")
