@@ -1,6 +1,12 @@
 # vanity-hash
 
-`vanity-hash` modifies files by embedding an optimized nonce such that the resulting file hashes to a target prefix, suffix, or magic word pattern.
+`vanity-hash` modifies files by adding or replacing bytes with a nonce so the resulting hash contains specific data.
+
+```bash
+vanity-hash -s dead -e BEEF document.txt
+sha256sum document.txt
+dead16546543ffff45f5ff4ff65f90234acfe50123984920401823901923beef
+```
 
 ## Features
 
@@ -60,7 +66,7 @@ options:
 ### 1. Basic Vanity Prefix Search
 Find a nonce so that the file's SHA-256 hash starts with `deadBEEF`:
 ```bash
-vanity-hash -s deadBEEF document.txt document_mined.txt
+vanity-hash -s deadBEEF document.txt
 ```
 
 Example output:
@@ -70,7 +76,7 @@ searching will take approx. 4.3G hashes
 time running: 3s (estimated: 4s)
 hashes searched: 3.1G (1033.3 MHash/sec)
 
-Hash found: deadBEEF16546543ffff45f5ff4ff65f90234acfe50123984920401823901923
+Hash found: deadbeef16546543ffff45f5ff4ff65f90234acfe50123984920401823901923
 ```
 
 ### 2. Prefix and Suffix Match with 4-bit Boundaries
